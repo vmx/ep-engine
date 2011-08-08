@@ -24,6 +24,7 @@
 #include "common.h"
 #include "couch-kvstore/couch-kvstore.h"
 #include "forest-kvstore/forest-kvstore.h"
+#include "leveldb-kvstore/leveldb-kvstore.h"
 #include "statwriter.h"
 #include "kvstore.h"
 #include "vbucket.h"
@@ -72,6 +73,8 @@ KVStore *KVStoreFactory::create(KVStoreConfig &config, bool read_only) {
         ret = new CouchKVStore(config, read_only);
     } else if (backend.compare("forestdb") == 0) {
         ret = new ForestKVStore(config);
+    } else if (backend.compare("leveldbdb") == 0) {
+        ret = new LevelDBKVStore(config);
     } else {
         LOG(EXTENSION_LOG_WARNING, "Unknown backend: [%s]", backend.c_str());
     }
