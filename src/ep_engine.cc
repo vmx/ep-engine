@@ -5722,10 +5722,12 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::getAllVBucketSequenceNumbers(const
                             cookie);
     }
 
-    for (auto id : vbuckets) {
-        RCPtr<VBucket> vb = getVBucket(id);
+    for (std::vector<int>::iterator id = vbuckets.begin();
+         id != vbuckets.end();
+         ++id) {
+        RCPtr<VBucket> vb = getVBucket(*id);
         if (vb) {
-            auto state = vb->getState();
+            vbucket_state_t state = vb->getState();
             if (state == vbucket_state_active || state == vbucket_state_replica) {
                 uint16_t vbid = htons(static_cast<uint16_t>(id));
                 uint64_t highSeqno;
@@ -5734,7 +5736,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::getAllVBucketSequenceNumbers(const
                 } else {
                     highSeqno = htonll(vb->checkpointManager.getLastClosedChkBySeqno());
                 }
-                auto offset = payload.size();
+                size_t offset = payload.size();
                 payload.resize(offset + sizeof(vbid) + sizeof(highSeqno));
                 memcpy(payload.data() + offset, &vbid, sizeof(vbid));
                 memcpy(payload.data() + offset + sizeof(vbid), &highSeqno,
