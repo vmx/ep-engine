@@ -24,7 +24,7 @@
 #include "common.h"
 #include "couch-kvstore/couch-kvstore.h"
 #include "forest-kvstore/forest-kvstore.h"
-#include "leveldb-kvstore/leveldb-kvstore.h"
+#include "leveldb-kvstore/leveldb-kvstore.hh"
 #include "statwriter.h"
 #include "kvstore.h"
 #include "vbucket.h"

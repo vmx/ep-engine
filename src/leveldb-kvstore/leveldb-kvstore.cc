@@ -6,34 +6,22 @@
 #include <algorithm>
 
 #include <ep_engine.h>
+#include <JSON_checker.h>
 #include "leveldb-kvstore.hh"
-#include "vbucket.hh"
+#include "vbucket.h"
 
 static const size_t DEFAULT_VAL_SIZE(64 * 1024);
 
-LevelDBKVStore::LevelDBKVStore(EventuallyPersistentEngine &theEngine)
-    : KVStore(),
-      stats(theEngine.getEpStats()),
+LevelDBKVStore::LevelDBKVStore(KVStoreConfig &config)
+    : KVStore(config),
       valBuffer(NULL),
       valSize(0),
       batch(NULL),
-      engine(theEngine) {
+      scanCounter(0) {
     keyBuffer = static_cast<char*>(calloc(1, sizeof(uint16_t)
                                           + std::numeric_limits<uint8_t>::max()));
     adjustValBuffer(DEFAULT_VAL_SIZE);
     open();
-}
-
-LevelDBKVStore::LevelDBKVStore(const LevelDBKVStore &from) : KVStore(from),
-                                                             stats(from.stats),
-                                                             valBuffer(NULL),
-                                                             valSize(0),
-                                                             batch(NULL),
-                                                             engine(from.engine) {
-    open();
-    keyBuffer = static_cast<char*>(calloc(1, sizeof(uint16_t)
-                                          + std::numeric_limits<uint8_t>::max()));
-    adjustValBuffer(from.valSize);
 }
 
 void LevelDBKVStore::adjustValBuffer(const size_t to) {
@@ -49,24 +37,32 @@ void LevelDBKVStore::adjustValBuffer(const size_t to) {
     }
 }
 
-vbucket_map_t LevelDBKVStore::listPersistedVbuckets() {
+std::vector<vbucket_state *> LevelDBKVStore::listPersistedVbuckets() {
     // TODO:  Something useful.
-    std::map<std::pair<uint16_t, uint16_t>, vbucket_state> rv;
+    //std::map<std::pair<uint16_t, uint16_t>, vbucket_state> rv;
+    std::vector<vbucket_state *> rv;
     return rv;
 }
 
-void LevelDBKVStore::set(const Item &itm, uint16_t vbid,
-                         Callback<mutation_result> &cb) {
-    leveldb::Slice k(mkKeySlice(vbid, itm.getKey()));
+void LevelDBKVStore::set(const Item &itm, Callback<mutation_result> &cb) {
+    leveldb::Slice k(mkKeySlice(itm.getVBucketId(), itm.getKey()));
     leveldb::Slice v(mkValSlice(itm.getFlags(), itm.getExptime(),
                                 itm.getNBytes(), itm.getData()));
     batch->Put(k, v);
-    std::pair<int, int64_t> p(1, itm.getId() <= 0 ? 1 : 0);
+    std::pair<int, bool> p(1, true);
     cb.callback(p);
 }
 
-void LevelDBKVStore::get(const std::string &key, uint64_t,
-                         uint16_t vb, uint16_t, Callback<GetValue> &cb) {
+
+void LevelDBKVStore::get(const std::string &key, uint16_t vb,
+                         Callback<GetValue> &cb, bool fetchDelete) {
+    getWithHeader(nullptr, key, vb, cb, fetchDelete);
+}
+
+
+void LevelDBKVStore::getWithHeader(void* handle, const std::string& key,
+                                  uint16_t vb, Callback<GetValue>& cb,
+                                  bool fetchDelete) {
     leveldb::Slice k(mkKeySlice(vb, key));
     std::string value;
     leveldb::Status s = db->Get(leveldb::ReadOptions(), k, &value);
@@ -81,28 +77,37 @@ void LevelDBKVStore::get(const std::string &key, uint64_t,
     leveldb::Slice sval(value);
     grokValSlice(sval, &flags, &exp, &sz, &p);
 
-    GetValue rv(new Item(key,
+    uint8_t ext_meta[EXT_META_LEN];
+    if (checkUTF8JSON((const unsigned char *)p, sz)) {
+        ext_meta[0] = PROTOCOL_BINARY_DATATYPE_JSON;
+    } else {
+        ext_meta[0] = PROTOCOL_BINARY_RAW_BYTES;
+    }
+
+    GetValue rv(new Item((char *)key.c_str(),
+                         (size_t)key.size(),
                          flags,
                          exp,
                          p,
                          sz,
+                         ext_meta,
+                         EXT_META_LEN,
                          0, // CAS
-                         -1, // rowid
+                         // TODO vmx 2016-10-29: put in real sequence number
+                         0, // seqnum
                          vb
                          ),
                 ENGINE_SUCCESS, -1, 0);
     cb.callback(rv);
 }
 
-void LevelDBKVStore::reset() {
+void LevelDBKVStore::reset(uint16_t vbucketId) {
     if (db) {
         // TODO:  Implement.
     }
 }
 
-void LevelDBKVStore::del(const Item &itm,
-                         uint64_t, uint16_t,
-                         Callback<int> &cb) {
+void LevelDBKVStore::del(const Item &itm, Callback<int> &cb) {
     leveldb::Slice k(mkKeySlice(itm.getVBucketId(), itm.getKey()));
     batch->Delete(k);
     int rv(1);
@@ -119,7 +124,7 @@ static bool matches_prefix(leveldb::Slice s, size_t len, const char *p) {
     return s.size() >= len && std::memcmp(p, s.data(), len) == 0;
 }
 
-bool LevelDBKVStore::delVBucket(uint16_t vb, uint16_t) {
+bool LevelDBKVStore::delVBucket(uint16_t vb) {
     leveldb::Iterator* it = db->NewIterator(leveldb::ReadOptions());
     const char *prefix(reinterpret_cast<const char*>(&vb));
     std::string start(prefix, sizeof(vb));
@@ -134,7 +139,8 @@ bool LevelDBKVStore::delVBucket(uint16_t vb, uint16_t) {
     return true;
 }
 
-bool LevelDBKVStore::snapshotVBuckets(const vbucket_map_t &) {
+bool LevelDBKVStore::snapshotVBucket(uint16_t vbucketId, vbucket_state &vbstate,
+                                     VBStatePersist options) {
     // TODO:  Implement
     return true;
 }
@@ -148,41 +154,12 @@ void LevelDBKVStore::destroyInvalidVBuckets(bool) {
     // TODO:  implement
 }
 
-void LevelDBKVStore::dump(shared_ptr<Callback<GetValue> > cb) {
-    std::cerr << "Loading up stuff." << std::endl;
-    leveldb::Iterator* it = db->NewIterator(leveldb::ReadOptions());
-    for (it->SeekToFirst(); it->Valid(); it->Next()) {
-        uint16_t vbid;
-        std::string key;
-        uint32_t flags, exp;
-        size_t sz;
-        const char *p;
-        grokKeySlice(it->key(), &vbid, &key);
-        grokValSlice(it->value(), &flags, &exp, &sz, &p);
-
-        GetValue rv(new Item(key,
-                             flags,
-                             exp,
-                             p,
-                             sz,
-                             0, // CAS
-                             -1, // rowid
-                             vbid
-                             ),
-                    ENGINE_SUCCESS, -1, 0);
-        cb->callback(rv);
-    }
-    assert(it->status().ok());  // Check for any errors found during the scan
-    delete it;
-}
-
-void LevelDBKVStore::dump(uint16_t, shared_ptr<Callback<GetValue> >) {
-    abort();
-}
-
-StorageProperties LevelDBKVStore::getStorageProperties() {
-    size_t concurrency(1);
-    StorageProperties rv(concurrency, concurrency - 1, 1, true, true);
+StorageProperties LevelDBKVStore::getStorageProperties(void) {
+    StorageProperties rv(StorageProperties::EfficientVBDump::Yes,
+                         StorageProperties::EfficientVBDeletion::Yes,
+                         StorageProperties::PersistedDeletion::No,
+                         StorageProperties::EfficientGet::Yes,
+                         StorageProperties::ConcurrentWriteCompact::Yes);
     return rv;
 }
 
@@ -215,4 +192,18 @@ void LevelDBKVStore::grokValSlice(const leveldb::Slice &s, uint32_t *f, uint32_t
     size_t data_size(s.size() - (sizeof(*f) + sizeof(*e)));
     std::memcpy(sz, &data_size, sizeof(*sz));
     *p = s.data() + sizeof(*f) + sizeof(*e);
+}
+
+
+ScanContext* LevelDBKVStore::initScanContext(
+    std::shared_ptr<Callback<GetValue> > cb,
+    std::shared_ptr<Callback<CacheLookup> > cl,
+    uint16_t vbid, uint64_t startSeqno,
+    DocumentFilter options,
+    ValueFilter valOptions) {
+    // TODO vmx 2016-10-29: implement
+    size_t scanId = scanCounter++;
+    return new ScanContext(cb, cl, vbid, scanId, startSeqno,
+                           99999999, options,
+                           valOptions, 999999);
 }

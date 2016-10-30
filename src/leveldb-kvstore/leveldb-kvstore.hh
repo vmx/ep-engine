@@ -5,30 +5,25 @@
 #include <map>
 #include <vector>
 
-#include <kvstore.hh>
+#include <kvstore.h>
 
 #include <leveldb/db.h>
 #include <leveldb/slice.h>
 #include <leveldb/write_batch.h>
 
-class EventuallyPersistentEngine;
-class EPStats;
 
 /**
  * A persistence store based on leveldb.
  */
 class LevelDBKVStore : public KVStore {
 public:
-
     /**
-     * Construct an instance of sqlite with the given database name.
+     * Constructor
+     *
+     * @param config    Configuration information
+     * @param read_only flag indicating if this kvstore instance is for read-only operations
      */
-    LevelDBKVStore(EventuallyPersistentEngine &theEngine);
-
-    /**
-     * Copying opens a new underlying DB.
-     */
-    LevelDBKVStore(const LevelDBKVStore &from);
+    LevelDBKVStore(KVStoreConfig &config);
 
     /**
      * Cleanup.
@@ -42,7 +37,7 @@ public:
     /**
      * Reset database to a clean state.
      */
-    void reset();
+    void reset(uint16_t vbucketId);
 
     /**
      * Begin a transaction (if not already in one).
@@ -87,27 +82,30 @@ public:
     /**
      * Overrides set().
      */
-    void set(const Item &item, uint16_t vb_version, Callback<mutation_result> &cb);
+    void set(const Item &item, Callback<mutation_result> &cb);
 
     /**
      * Overrides get().
      */
-    void get(const std::string &key, uint64_t rowid,
-             uint16_t vb, uint16_t vbver, Callback<GetValue> &cb);
+    void get(const std::string &key, uint16_t vb, Callback<GetValue> &cb,
+             bool fetchDelete = false);
+
+    void getWithHeader(void* handle, const std::string& key,
+                       uint16_t vb, Callback<GetValue>& cb,
+                       bool fetchDelete = false);
+
 
     /**
      * Overrides del().
      */
-    void del(const Item &itm,
-             uint64_t rowid, uint16_t vbver,
-             Callback<int> &cb);
+    void del(const Item &itm, Callback<int> &cb);
 
-    bool delVBucket(uint16_t vbucket, uint16_t vb_version);
+    bool delVBucket(uint16_t vbucket);
 
     bool delVBucket(uint16_t vbucket, uint16_t vb_version,
                     std::pair<int64_t, int64_t> row_range);
 
-    vbucket_map_t listPersistedVbuckets(void);
+    std::vector<vbucket_state *> listPersistedVbuckets(void);
 
     /**
      * Take a snapshot of the stats in the main DB.
@@ -116,14 +114,8 @@ public:
     /**
      * Take a snapshot of the vbucket states in the main DB.
      */
-    bool snapshotVBuckets(const vbucket_map_t &m);
-
-    /**
-     * Overrides dump
-     */
-    void dump(shared_ptr<Callback<GetValue> > cb);
-
-    void dump(uint16_t vb, shared_ptr<Callback<GetValue> > cb);
+    bool snapshotVBucket(uint16_t vbucketId, vbucket_state &vbstate,
+                         VBStatePersist options);
 
     void destroyInvalidVBuckets(bool);
 
@@ -131,16 +123,94 @@ public:
         return 1;
     }
 
-    size_t getShardId(const QueuedItem &) {
-        return 0;
-    }
+    //size_t getShardId(const QueuedItem &) {
+    //    return 0;
+    //}
 
     void optimizeWrites(std::vector<queued_item> &) {
     }
 
-private:
+    uint16_t getNumVbsPerFile(void) override {
+        // TODO vmx 2016-10-29: return the actual value
+        return 1024;
+    }
 
-    EPStats &stats;
+    bool compactDB(compaction_ctx *) {
+        // Explicit compaction is not needed
+        return true;
+    }
+
+    uint16_t getDBFileId(const protocol_binary_request_compact_db&) {
+        // Not needed if there is no explicit compaction
+        return 0;
+    }
+
+    vbucket_state * getVBucketState(uint16_t vbucketId) {
+        // TODO vmx 2016-10-29: implement
+        std::string failovers("[{\"id\":0, \"seq\":0}]");
+        return new vbucket_state(vbucket_state_dead, 0, 0, 0, 0,
+                                 0, 0, 0, failovers);
+    }
+
+    size_t getNumPersistedDeletes(uint16_t vbid) {
+        // TODO vmx 2016-10-29: implement
+        return 0;
+    }
+
+    DBFileInfo getDbFileInfo(uint16_t vbid) {
+        // TODO vmx 2016-10-29: implement
+        DBFileInfo vbinfo;
+        return vbinfo;
+    }
+
+    DBFileInfo getAggrDbFileInfo() {
+        // TODO vmx 2016-10-29: implement
+        DBFileInfo vbinfo;
+        return vbinfo;
+    }
+
+    size_t getItemCount(uint16_t vbid) {
+        // TODO vmx 2016-10-29: implement
+        return 0;
+    }
+
+    RollbackResult rollback(uint16_t vbid, uint64_t rollbackSeqno,
+                            std::shared_ptr<RollbackCB> cb) {
+        // TODO vmx 2016-10-29: implement
+        // NOTE vmx 2016-10-29: For LevelDB it will probably always be a
+        // full rollback as it doesn't support Couchstore like rollback
+        // semantics
+        return RollbackResult(false, 0, 0, 0);
+    }
+
+    void pendingTasks() {
+        // NOTE vmx 2016-10-29: Intentionally left empty;
+    }
+
+    ENGINE_ERROR_CODE getAllKeys(uint16_t vbid, std::string &start_key,
+                                 uint32_t count,
+                                 std::shared_ptr<Callback<uint16_t&, char*&> > cb) {
+        // TODO vmx 2016-10-29: implement
+        return ENGINE_SUCCESS;
+    }
+
+    ScanContext* initScanContext(std::shared_ptr<Callback<GetValue> > cb,
+                                 std::shared_ptr<Callback<CacheLookup> > cl,
+                                 uint16_t vbid, uint64_t startSeqno,
+                                 DocumentFilter options,
+                                 ValueFilter valOptions);
+
+    scan_error_t scan(ScanContext* sctx) {
+        // TODO vmx 2016-10-29: implement
+        return scan_success;
+    }
+
+    void destroyScanContext(ScanContext* ctx) {
+        // TODO vmx 2016-10-29: implement
+        delete ctx;
+    }
+
+private:
 
     /**
      * Direct access to the DB.
@@ -172,10 +242,11 @@ private:
                       size_t *, const char **);
 
     leveldb::WriteBatch *batch;
-    EventuallyPersistentEngine &engine;
 
     // Disallow assignment.
     void operator=(LevelDBKVStore &from);
+
+    std::atomic<size_t> scanCounter; //atomic counter for generating scan id
 };
 
 #endif /* LEVELDB_KVSTORE_H */

@@ -25,6 +25,7 @@ INCLUDE_DIRECTORIES(BEFORE ${CMAKE_INSTALL_PREFIX}/include
                            ${Couchstore_SOURCE_DIR}/include
                            ${ForestDB_SOURCE_DIR}/include
                            ${phosphor_SOURCE_DIR}/include
+                           ${CMAKE_CURRENT_SOURCE_DIR}/embedded/leveldb/include
                            ${CMAKE_CURRENT_BINARY_DIR})
 
 INCLUDE_DIRECTORIES(AFTER
@@ -116,6 +117,45 @@ SET(KVSTORE_SOURCE src/crc32.c src/kvstore.cc)
 SET(COUCH_KVSTORE_SOURCE src/couch-kvstore/couch-kvstore.cc
             src/couch-kvstore/couch-fs-stats.cc)
 SET(FOREST_KVSTORE_SOURCE src/forest-kvstore/forest-kvstore.cc)
+SET(LEVELDB_KVSTORE_SOURCE src/leveldb-kvstore/leveldb-kvstore.cc)
+SET(LEVELDB_SOURCE
+       embedded/leveldb/db/builder.cc
+       embedded/leveldb/db/c.cc
+       embedded/leveldb/db/db_impl.cc
+       embedded/leveldb/db/db_iter.cc
+       embedded/leveldb/db/filename.cc
+       embedded/leveldb/db/dbformat.cc
+       embedded/leveldb/db/log_reader.cc
+       embedded/leveldb/db/log_writer.cc
+       embedded/leveldb/db/memtable.cc
+       embedded/leveldb/db/repair.cc
+       embedded/leveldb/db/table_cache.cc
+       embedded/leveldb/db/version_edit.cc
+       embedded/leveldb/db/version_set.cc
+       embedded/leveldb/db/write_batch.cc
+       embedded/leveldb/port/port_posix.cc
+       embedded/leveldb/table/block.cc
+       embedded/leveldb/table/block_builder.cc
+       embedded/leveldb/table/format.cc
+       embedded/leveldb/table/iterator.cc
+       embedded/leveldb/table/merger.cc
+       embedded/leveldb/table/table.cc
+       embedded/leveldb/table/table_builder.cc
+       embedded/leveldb/table/two_level_iterator.cc
+       embedded/leveldb/util/arena.cc
+       embedded/leveldb/util/cache.cc
+       embedded/leveldb/util/coding.cc
+       embedded/leveldb/util/comparator.cc
+       embedded/leveldb/util/crc32c.cc
+       embedded/leveldb/util/env.cc
+       embedded/leveldb/util/env_posix.cc
+       embedded/leveldb/util/hash.cc
+       embedded/leveldb/util/histogram.cc
+       embedded/leveldb/util/logging.cc
+       embedded/leveldb/util/options.cc
+       embedded/leveldb/util/status.cc)
+SET(LEVELDB_STATIC_LIB ${CMAKE_CURRENT_SOURCE_DIR}/embedded/leveldb/libleveldb.a)
+
 SET(OBJECTREGISTRY_SOURCE src/objectregistry.cc)
 SET(CONFIG_SOURCE src/configuration.cc
   ${CMAKE_CURRENT_BINARY_DIR}/src/generated_configuration.cc)
@@ -173,7 +213,8 @@ ADD_LIBRARY(ep SHARED
             src/vbucketmap.cc
             src/warmup.cc
             ${KVSTORE_SOURCE} ${COUCH_KVSTORE_SOURCE}
-            ${FOREST_KVSTORE_SOURCE} ${OBJECTREGISTRY_SOURCE}
+            ${FOREST_KVSTORE_SOURCE} ${LEVELDB_KVSTORE_SOURCE}
+            ${OBJECTREGISTRY_SOURCE}
             ${CONFIG_SOURCE})
 
 SET_TARGET_PROPERTIES(ep PROPERTIES PREFIX "")
@@ -251,10 +292,12 @@ ADD_EXECUTABLE(ep-engine_ep_unit_tests
   ${KVSTORE_SOURCE}
   ${COUCH_KVSTORE_SOURCE}
   ${FOREST_KVSTORE_SOURCE}
+  ${LEVELDB_KVSTORE_SOURCE}
+  ${CMAKE_CURRENT_SOURCE_DIR}/embedded/leveldb/
   $<TARGET_OBJECTS:memory_tracking>
   ${Memcached_SOURCE_DIR}/programs/engine_testapp/mock_server.cc)
 TARGET_LINK_LIBRARIES(ep-engine_ep_unit_tests couchstore cJSON dirutils forestdb gtest gmock JSON_checker mcd_util platform
-                      phosphor ${MALLOC_LIBRARIES})
+                      phosphor ${MALLOC_LIBRARIES} ${LEVELDB_STATIC_LIB})
 
 ADD_EXECUTABLE(ep-engine_atomic_ptr_test
   tests/module_tests/atomic_ptr_test.cc
@@ -344,10 +387,10 @@ ADD_EXECUTABLE(ep-engine_kvstore_test
   src/logger.cc
   src/testlogger.cc
   ${OBJECTREGISTRY_SOURCE} ${KVSTORE_SOURCE} ${COUCH_KVSTORE_SOURCE}
-  ${FOREST_KVSTORE_SOURCE} ${CONFIG_SOURCE}
+  ${FOREST_KVSTORE_SOURCE} ${LEVELDB_KVSTORE_SOURCE} ${CONFIG_SOURCE}
   $<TARGET_OBJECTS:couchstore_test_fileops>)
 TARGET_LINK_LIBRARIES(ep-engine_kvstore_test
-                      cJSON JSON_checker couchstore dirutils forestdb gmock gtest platform phosphor)
+                      cJSON JSON_checker couchstore dirutils forestdb gmock gtest platform phosphor ${LEVELDB_STATIC_LIB})
 TARGET_INCLUDE_DIRECTORIES(ep-engine_kvstore_test
         PUBLIC
         ${Couchstore_SOURCE_DIR})
