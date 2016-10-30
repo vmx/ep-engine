@@ -94,7 +94,7 @@ void LevelDBKVStore::getWithHeader(void* handle, const std::string& key,
                          EXT_META_LEN,
                          0, // CAS
                          // TODO vmx 2016-10-29: put in real sequence number
-                         0, // seqnum
+                         1, // seqnum
                          vb
                          ),
                 ENGINE_SUCCESS, -1, 0);

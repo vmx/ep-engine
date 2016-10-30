@@ -1646,7 +1646,7 @@ TEST_F(CouchKVStoreMetaData, assignment) {
 // Test cases which run on both Couchstore and ForestDB
 INSTANTIATE_TEST_CASE_P(CouchstoreAndForestDB,
                         CouchAndForestTest,
-                        ::testing::Values("couchdb", "forestdb"),
+                        ::testing::Values("couchdb", "forestdb", "leveldb"),
                         [] (const ::testing::TestParamInfo<std::string>& info) {
                             return info.param;
                         });
