@@ -219,7 +219,7 @@ ADD_LIBRARY(ep SHARED
 
 SET_TARGET_PROPERTIES(ep PROPERTIES PREFIX "")
 TARGET_LINK_LIBRARIES(ep cJSON JSON_checker couchstore forestdb
-  dirutils platform phosphor ${LIBEVENT_LIBRARIES})
+  dirutils platform phosphor ${LIBEVENT_LIBRARIES} ${LEVELDB_STATIC_LIB})
 
 # Single executable containing all class-level unit tests involving
 # EventuallyPersistentEngine driven by GoogleTest.
