@@ -20,6 +20,12 @@ LevelDBKVStore::LevelDBKVStore(KVStoreConfig &config)
       scanCounter(0) {
     keyBuffer = static_cast<char*>(calloc(1, sizeof(uint16_t)
                                           + std::numeric_limits<uint8_t>::max()));
+    cachedVBStates.reserve(configuration.getMaxVBuckets());
+    std::string failovers("[{\"id\":0, \"seq\":0}]");
+    for (auto *vb: cachedVBStates) {
+        vb = new vbucket_state(vbucket_state_active, 0, 0, 0, 0,
+                               0, 0, 0, failovers);
+    }
     adjustValBuffer(DEFAULT_VAL_SIZE);
     open();
 }

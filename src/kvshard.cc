@@ -47,6 +47,11 @@ KVShard::KVShard(uint16_t id, KVBucket& store) :
         rwUnderlying = KVStoreFactory::create(kvConfig);
         roUnderlying = rwUnderlying;
         commitInterval = config.getMaxVbuckets()/config.getMaxNumShards();
+    } else if (backend.compare("leveldb") == 0) {
+        rwUnderlying = KVStoreFactory::create(kvConfig);
+        roUnderlying = rwUnderlying;
+    } else {
+        throw std::invalid_argument("KVShard: Invalid backend: " + backend);
     }
 
     /* [EPHE TODO]: Try to avoid dynamic cast */

@@ -147,9 +147,7 @@ public:
 
     vbucket_state * getVBucketState(uint16_t vbucketId) {
         // TODO vmx 2016-10-29: implement
-        std::string failovers("[{\"id\":0, \"seq\":0}]");
-        return new vbucket_state(vbucket_state_dead, 0, 0, 0, 0,
-                                 0, 0, 0, failovers);
+        return cachedVBStates[vbucketId];
     }
 
     size_t getNumPersistedDeletes(uint16_t vbid) {

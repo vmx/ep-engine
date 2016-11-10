@@ -596,7 +596,7 @@ FUNCTION(ADD_TESTSUITE value_evict_name full_evict_name testsuite_so timeout)
   SET(_cmdline
       ${CMAKE_BINARY_DIR}/memcached/engine_testapp -E ${CMAKE_CURRENT_BINARY_DIR}/ep.so -T ${testsuite_so})
   ADD_TEST(NAME ${value_evict_name}
-         COMMAND ${_cmdline} -v -e "dbname=./${value_evict_name}")
+         COMMAND ${_cmdline} -v -e "dbname=./${value_evict_name}$<SEMICOLON>backend=leveldb")
   ADD_TEST(NAME ${full_evict_name}
          COMMAND ${_cmdline} -v -e "item_eviction_policy=full_eviction$<SEMICOLON>dbname=./${full_evict_name}")
   SET_TESTS_PROPERTIES(${value_evict_name} PROPERTIES TIMEOUT ${timeout})
